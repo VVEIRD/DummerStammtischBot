@@ -31,9 +31,9 @@ c = conn.cursor()
 
 # Create table
 c.execute('''CREATE TABLE IF NOT EXISTS chatrooms
-             (chat_id integer, 
-                stammtischtag integer, 
-                last_notified integer, 
+             (chat_id integer,
+                stammtischtag integer,
+                last_notified integer,
                 last_voting_notification integer
               )''')
 
@@ -57,12 +57,14 @@ c.execute('''CREATE TABLE IF NOT EXISTS "votings" (
 ######
 
 def load_locations():
+    conn = sqlite3.connect('DummerStammtischBot.db')
     c = conn.cursor()
     locations = {}
     for row in c.execute('SELECT chat_id, l_id, location FROM locations'):
         if row[0] not in locations:
             locations[row[0]] = []
         locations[row[0]].append((row[1], row[2]))
+    conn.close()
     return locations
 
 # Lade Locations wenn die Datei fuer locations existiert
@@ -81,10 +83,12 @@ if locations == None:
 ######
 
 def load_chatrooms():
+    conn = sqlite3.connect('DummerStammtischBot.db')
     c = conn.cursor()
     chatrooms = {}
     for row in c.execute('SELECT chat_id, stammtischtag, last_notified, last_voting_notification FROM chatrooms'):
         chatrooms[row[0]] = [row[1],row[2], row[3]]
+    conn.close()
     return chatrooms
 
 # Lade chatrooms wenn die Datei fuer chatrooms existiert
@@ -123,7 +127,7 @@ def add_chatroom(chat_id):
     if chat_id not in chatrooms:
         chatrooms[chat_id] = DEFAULT_STAMMTISCHTAG
         print 'New chatroom: ' + str(chat_id)
-        execute_query('INSERT INTO chatrooms (chat_id, stammtischtag, last_notified) VALUES (?, ?, 0, 0)',  [chat_id, chatrooms[chat_id]])
+        execute_query('INSERT INTO chatrooms (chat_id, stammtischtag, last_notified, last_voting_notification) VALUES (?, ?, 0, 0)',  [chat_id, chatrooms[chat_id]])
 
 def remove_chatroom(chat_id):
     if chat_id in chatrooms:
@@ -152,6 +156,7 @@ def echo(update, context):
         context.bot.send_message(chat_id=update.message.chat_id, text=message)
 
 def add_location(update, context):
+    global locations
     add_chatroom(update.message.chat.id)
     chat_id = update.message.chat.id
     location = ' '.join(context.args).strip()
@@ -246,7 +251,7 @@ def notifier(context):
                 message += u'\nStimme mit 1 bis %s ab' % len(locations[chat_id])
             else:
                 message += u'Leider gibt es noch keine Ziele. Füge welche mit /add <Name> hinzu'
-            
+
             context.bot.send_message(chat_id=chat_id, text=message)
             execute_query('UPDATE chatrooms SET last_notified = ? WHERE chat_id = ?', [now, chat_id])
             chatrooms[chat_id][1] = now
@@ -328,4 +333,3 @@ updater.start_polling()
 #   updater.bot.send_message(chat_id=int(chatid), text='Ich bin Online!')
 
 updater.idle()
-
