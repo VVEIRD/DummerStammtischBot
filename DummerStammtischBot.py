@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 ## Stammtischbot
-# @DummerStammtischBot
 #
 # Macht Mittwochs eine Umfrage um herauszufinden wohin es zum Stammtisch gehen soll
+
 import sys
 import json
 import sqlite3
@@ -18,6 +18,9 @@ import sys
 TOKEN = sys.argv[1]
 
 DEFAULT_STAMMTISCHTAG = 3
+
+MAX_LOCATIONS = 30
+
 TAGE = {1 : "Montag", 2 : "Dienstag", 3 : "Mittwoch", 4 : "Donnerstag", 5 : "Freitag", 6 : "Samstag", 7 : "Sonntag"}
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -103,8 +106,16 @@ conn.close()
 def execute_query(query, args):
     conn = sqlite3.connect('DummerStammtischBot.db')
     c = conn.cursor()
-    result = c.execute(query, args)
+    c.execute(query, args)
     conn.commit()
+    conn.close()
+
+def execute_select(query, args):
+    conn = sqlite3.connect('DummerStammtischBot.db')
+    c = conn.cursor()
+    result = []
+    for row in c.execute(query, args):
+        result.append(row)
     conn.close()
     return result
 
@@ -112,12 +123,13 @@ def add_chatroom(chat_id):
     if chat_id not in chatrooms:
         chatrooms[chat_id] = DEFAULT_STAMMTISCHTAG
         print 'New chatroom: ' + str(chat_id)
-        execute_query('INSERT INTO chatrooms (chat_id, stammtischtag, last_notified) VALUES (?, ?, 0)',  [chat_id, chatrooms[chat_id]])
+        execute_query('INSERT INTO chatrooms (chat_id, stammtischtag, last_notified) VALUES (?, ?, 0, 0)',  [chat_id, chatrooms[chat_id]])
 
 def remove_chatroom(chat_id):
     if chat_id in chatrooms:
         print 'Removed from Chat: ' + str(chat_id)
         chatrooms.pop(chat_id, None)
+        locations.pop(chat_id, None)
         execute_query('DELETE FROM chatrooms WHERE chat_id = ?', [chat_id])
         execute_query('DELETE FROM votings WHERE chat_id = ?', [chat_id])
         execute_query('DELETE FROM locations WHERE chat_id = ?', [chat_id])
@@ -145,10 +157,12 @@ def add_location(update, context):
     location = ' '.join(context.args).strip()
     if chat_id not in locations:
         locations[chat_id] = []
-    if location and location not in locations[chat_id]:
-        locations[chat_id].append(location)
+    if location and location not in locations[chat_id] and len(locations) <= MAX_LOCATIONS:
         execute_query('''INSERT INTO locations (chat_id, l_id, location) VALUES (?, Ifnull((SELECT max(l_id)+1 FROM locations WHERE chat_id = ?), 1), ?)''', (chat_id, chat_id, location))
+        locations = load_locations()
         update.message.reply_text('Das Ziel ' + location + u' wurde hinzugefügt')
+    elif len(locations) > MAX_LOCATIONS:
+        update.message.reply_text('Ihr habt das Limit von %s Locations erreicht, sorry!')
 
 def list_locations(update, context):
     message = u'Folgende Stammtischziele stehen zur Verfügung:\r\n'
@@ -196,11 +210,25 @@ def left_member(update, context):
 def help(update, context):
     context.bot.send_message(chat_id=update.message.chat_id, text=u'Ich bin der StammtischBot!\r\nFolgende Befhele stehen euch zur Auswahl:\r\n /stammtischtag oder /st: Legt den Tag des Stammtischs fest\r\n /add: Ein Stammtischziel hinzufügen\r\n /list: Alle Stammtischziele anzeigen\r\n /help: Diese Nachricht anzeigen')
 
+def is_voting_time(chat_id):
+    now = int(time.time())
+    weekday = datetime.datetime.today().weekday()+1
+    hour = datetime.datetime.now().hour
+    # Am Tag vor dem Stammtisch soll abgestimmt werden
+    dayToNotifyAt = chatrooms[chat_id][0]-1
+    # Zeitpunkt an dem das letztre Voting gestartet wurde
+    lastNotified = chatrooms[chat_id][1]
+    # Zeitpunkt an dem das letztre Voting beendet wurde
+    lastVotingNotified = chatrooms[chat_id][2]
+    # Wir wollen am Vortag zwischen 8 und 18 Uhr voten
+    return dayToNotifyAt == weekday and hour >= 8 and hour < 18
+
 def notifier(context):
     for chat_id in chatrooms:
         now = int(time.time())
         weekday = datetime.datetime.today().weekday()+1
         hour = datetime.datetime.now().hour
+        # Am Tag vor dem Stammtisch soll abgestimmt werden
         dayToNotifyAt = chatrooms[chat_id][0]-1
         # Zeitpunkt an dem das letztre Voting gestartet wurde
         lastNotified = chatrooms[chat_id][1]
@@ -235,6 +263,22 @@ def notifier(context):
             context.bot.send_message(chat_id=chat_id, text=message)
             execute_query('UPDATE chatrooms SET last_voting_notification = ? WHERE chat_id = ?', [now, chat_id])
             chatrooms[chat_id][2] = now
+
+def vote(update, context):
+    chat_id = update.message.chat.id
+    user_id = update.message.from_user.id
+    user_name = update.message.from_user.first_name
+    if chat_id in chatrooms and is_voting_time(chat_id):
+        try:
+            auswahl = int(update.message.text.strip())
+            if auswahl >= 1 and auswahl <= len(locations[chat_id]):
+                execute_query('DELETE FROM votings WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
+                execute_query('INSERT INTO votings (chat_id, member_id, member_name, location_id) VALUES (?, ?, ?, ?)', [chat_id, user_id, user_name, auswahl])
+                location = execute_select('SELECT location FROM locations WHERE chat_id = ? AND l_id = ?', [chat_id, auswahl])[0]
+                update.message.reply_text(u'Du hast für %s gestimmt' % location)
+        except ValueError:
+            a = 0
+
 ######
 ## Bot Stuff. Init, Mappen der handler/methoden
 ######
@@ -274,8 +318,8 @@ dispatcher.add_handler(MessageHandler(Filters.status_update.new_chat_members, ne
 dispatcher.add_handler(MessageHandler(Filters.status_update.left_chat_member, left_member))
 
 # Echo handler
-echo_handler = MessageHandler(Filters.group,echo)
-dispatcher.add_handler(echo_handler)
+vote_handler = MessageHandler(Filters.group, vote)
+dispatcher.add_handler(vote_handler)
 
 updater.start_polling()
 
