@@ -160,6 +160,12 @@ def add_location(update, context):
     add_chatroom(update.message.chat.id)
     chat_id = update.message.chat.id
     location = ' '.join(context.args).strip()
+    from_user = context.bot.get_chat_member(update.message.chat.id, update.message.from_user.id)
+    is_admin = 'administrator' == from_user.status
+    is_creator = 'creator' == from_user.status
+    if not is_creator and not is_admin:
+        update.message.reply_text(u'Du bist kein Admin, sorry!')
+        return
     if chat_id not in locations:
         locations[chat_id] = []
     if location and location not in locations[chat_id] and len(locations) <= MAX_LOCATIONS:
@@ -182,6 +188,12 @@ def list_locations(update, context):
 
 def set_stammtischtag(update, context):
     chat_id = update.message.chat.id
+    from_user = context.bot.get_chat_member(update.message.chat.id, update.message.from_user.id)
+    is_admin = 'administrator' == from_user.status
+    is_creator = 'creator' == from_user.status
+    if not is_creator and not is_admin:
+        update.message.reply_text(u'Du bist kein Admin, sorry!')
+        return
     for arg in context.args:
         try:
             tag = int(arg)
@@ -213,7 +225,16 @@ def left_member(update, context):
         remove_chatroom(update.message.chat.id)
 
 def help(update, context):
-    context.bot.send_message(chat_id=update.message.chat_id, text=u'Ich bin der StammtischBot!\r\nFolgende Befhele stehen euch zur Auswahl:\r\n /stammtischtag oder /st: Legt den Tag des Stammtischs fest\r\n /add: Ein Stammtischziel hinzufügen\r\n /list: Alle Stammtischziele anzeigen\r\n /help: Diese Nachricht anzeigen')
+    context.bot.send_message(chat_id=update.message.chat_id, text=u'''Ich bin der StammtischBot!\r\n
+Folgende Befhele stehen euch zur Auswahl:
+
+[Admins]
+ /stammtischtag oder /st: Legt den Tag des Stammtischs fest
+ /add: Ein Stammtischziel hinzufügen
+
+[Alle]
+ /list: Alle Stammtischziele anzeigen
+ /help: Diese Nachricht anzeigen''')
 
 def is_voting_time(chat_id):
     now = int(time.time())
@@ -280,7 +301,7 @@ def vote(update, context):
                 execute_query('DELETE FROM votings WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
                 execute_query('INSERT INTO votings (chat_id, member_id, member_name, location_id) VALUES (?, ?, ?, ?)', [chat_id, user_id, user_name, auswahl])
                 location = execute_select('SELECT location FROM locations WHERE chat_id = ? AND l_id = ?', [chat_id, auswahl])[0]
-                update.message.reply_text(u'%s hast für %s gestimmt' % (update.message.from_user.first_name, location[0])
+                update.message.reply_text(u'%s hast für %s gestimmt' % (update.message.from_user.first_name, location[0]))
         except ValueError:
             a = 0
 
