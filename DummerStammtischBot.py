@@ -113,6 +113,7 @@ conn.close()
 ## Methoden fuer den Chatbot
 ######
 
+# Fuehrt ein Query aus, liefert keine Daten zurueck
 def execute_query(query, args):
     conn = sqlite3.connect('DummerStammtischBot.db')
     c = conn.cursor()
@@ -120,6 +121,7 @@ def execute_query(query, args):
     conn.commit()
     conn.close()
 
+# Fuert ein Query aus, liefert das Resultat als 2D-Array zurueck
 def execute_select(query, args):
     conn = sqlite3.connect('DummerStammtischBot.db')
     c = conn.cursor()
@@ -129,12 +131,14 @@ def execute_select(query, args):
     conn.close()
     return result
 
+# Fuegt einen neuen Gruppenchat hinzu, in dem der Bot hinzugefuegt wurde
 def add_chatroom(chat_id):
     if chat_id not in chatrooms:
         chatrooms[chat_id] = [DEFAULT_STAMMTISCHTAG, 0, 0]
         print 'New chatroom: ' + str(chat_id)
-        execute_query('INSERT INTO chatrooms (chat_id, stammtischtag, last_notified, last_voting_notification) VALUES (?, ?, 0, 0)',  [chat_id, chatrooms[chat_id]])
+        execute_query('INSERT INTO chatrooms (chat_id, stammtischtag, last_notified, last_voting_notification) VALUES (?, ?, 0, 0)',  [chat_id, chatrooms[chat_id][0]])
 
+# Entfernt alle Daten ueber einen Gruppenchat, asu dem der Bot entfernt wurde
 def remove_chatroom(chat_id):
     if chat_id in chatrooms:
         print 'Removed from Chat: ' + str(chat_id)
@@ -149,6 +153,8 @@ def start(update, context):
     add_chatroom(update.message.chat.id)
     context.bot.send_message(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
 
+# Prueft ob der User der Nachricht der Admin oder der Ersteller ist.
+#  Bei beiden liefert er True zurueck
 def has_admin(update, context):
     chat_id = update.message.chat.id
     user = context.bot.get_chat_member(update.message.chat.id, update.message.from_user.id)
@@ -156,12 +162,15 @@ def has_admin(update, context):
     is_creator = 'creator' == user.status
     return is_admin or is_creator
 
+# Prueft ob der aufrufende Benutzer von einem Admin voice erhalten hat
+#  Falls ja, kann dieser User die erweiterten Funktionen des Bots nutzen
 def has_voice(update, context):
     chat_id = update.message.chat.id
     user_id = update.message.from_user.id
     is_voiced = execute_select('SELECT 1 FROM voiced WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
     return len(is_voiced) > 0 
 
+# Erteilt einem Benutzer Voice. Darf nur von Admins ausgefuehrt werden.
 def voice(update, context):
     chat_id = update.message.chat.id
     is_admin = has_admin(update, context)
@@ -176,6 +185,7 @@ def voice(update, context):
             execute_query('INSERT INTO voiced (chat_id, member_id) VALUES (?, ?)', [chat_id, user_id])
             update.message.reply_text(u'%s wurde authorisiert' % (user_name))
 
+# Entzieht einem User voice. Darf nur von einem Admin gemacht werden
 def revoke(update, context):
     chat_id = update.message.chat.id
     is_admin = has_admin(update, context)
@@ -189,6 +199,7 @@ def revoke(update, context):
             execute_query('DELETE FROM voiced WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
             update.message.reply_text(u'%s kann die erweiterten Funktionen nicht mehr nutzen' % (user_name))
 
+# Fuegt einen ort zu den Stammtischen hinzu. Darf nut von Usern mit voice oder Admins gemacht werden
 def add_location(update, context):
     global locations
     add_chatroom(update.message.chat.id)
@@ -208,6 +219,7 @@ def add_location(update, context):
     elif len(locations) > MAX_LOCATIONS:
         update.message.reply_text('Ihr habt das Limit von %s Locations erreicht, sorry!')
 
+# Listet alle Orte, die für den Stammtisch verfügbar sind, auf.
 def list_locations(update, context):
     message = u'Folgende Stammtischziele stehen zur Verfügung:\r\n'
     if update.message.chat.id in locations:
@@ -219,12 +231,12 @@ def list_locations(update, context):
     else:
         context.bot.send_message(chat_id=update.message.chat_id, text=u'Es gibt noch keine Stammtischziele, füge welche mit /add hinzu')
 
+# Setzt den Tag des Stammtisches. Davon hängt ab wann abgestimmt wird. Duerfen nur Admins machen.
 def set_stammtischtag(update, context):
     chat_id = update.message.chat.id
     from_user = context.bot.get_chat_member(update.message.chat.id, update.message.from_user.id)
-    is_admin = 'administrator' == from_user.status
-    is_creator = 'creator' == from_user.status
-    if not is_creator and not is_admin:
+    is_admin = has_admin(update, context)
+    if not is_admin:
         update.message.reply_text(u'Du bist kein Admin, sorry!')
         return
     for arg in context.args:
@@ -257,6 +269,7 @@ def left_member(update, context):
     if member.username == 'DummerStammtischBot':
         remove_chatroom(update.message.chat.id)
 
+# Zeigt alle verfuegbaren Funktionen an
 def help(update, context):
     context.bot.send_message(chat_id=update.message.chat_id, text=u'''Ich bin der StammtischBot!\r\n
 Folgende Befhele stehen euch zur Auswahl:
@@ -264,15 +277,15 @@ Folgende Befhele stehen euch zur Auswahl:
 [Admins]
  /stammtischtag oder /st: Legt den Tag des Stammtischs fest
  /voice [1..x]: Der angegebene Benutzer kann die erweiterte Funktionen nutzen
-
+ /revoke [1..x]: Entzieht den angegebenen Benutzern die Rechte auf die erweiterten funktionen.
 [Erweiterte Funktionen]
  /add: Ein Stammtischziel hinzufügen
-
 
 [Alle]
  /list: Alle Stammtischziele anzeigen
  /help: Diese Nachricht anzeigen''')
 
+# Gibt aus, ob der Chat im Abstimmzeitraum befindet
 def is_voting_time(chat_id):
     now = int(time.time())
     weekday = datetime.datetime.today().weekday()+1
@@ -286,6 +299,7 @@ def is_voting_time(chat_id):
     # Wir wollen am Vortag zwischen 8 und 18 Uhr voten
     return dayToNotifyAt == weekday and hour >= 8 and hour < 18
 
+# Informiert den Chat ueber diverse Dinge
 def notifier(context):
     for chat_id in chatrooms:
         now = int(time.time())
@@ -327,6 +341,8 @@ def notifier(context):
             execute_query('UPDATE chatrooms SET last_voting_notification = ? WHERE chat_id = ?', [now, chat_id])
             chatrooms[chat_id][2] = now
 
+# Abstimmfunktion, der benutzer muss nur eine valide Zahl in den Chat eintippen, damit er abstimmt.
+# Er wird vom Bot informiert, wenn er abgestimmt hat.
 def vote(update, context):
     chat_id = update.message.chat.id
     user_id = update.message.from_user.id
