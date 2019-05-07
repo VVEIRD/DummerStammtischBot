@@ -52,6 +52,12 @@ c.execute('''CREATE TABLE IF NOT EXISTS "votings" (
     PRIMARY KEY("chat_id","member_id")
 )''')
 
+c.execute('''CREATE TABLE IF NOT EXISTS "voiced" (
+    "chat_id"    INTEGER,
+    "member_id"    INTEGER,
+    PRIMARY KEY("chat_id","member_id")
+)''')
+
 ######
 ## Liste mit den Locations fuer den Stammtisch
 ######
@@ -143,28 +149,55 @@ def start(update, context):
     add_chatroom(update.message.chat.id)
     context.bot.send_message(chat_id=update.message.chat_id, text="I'm a bot, please talk to me!")
 
-def echo(update, context):
-    update.message.reply_text('Hallo %s!' % update.message.from_user.first_name)
-    if hasattr(update, 'message') and hasattr(update.message, 'text') and update.message.text != None:
-        message = update.message.text
-        if "fuchs" in update.message.text:
-            message = "der Has'"
-        elif "has" in update.message.text:
-            message = "Hurz!"
-        elif "hurz" in update.message.text:
-            message = "sehr gut!"
-        context.bot.send_message(chat_id=update.message.chat_id, text=message)
+def has_admin(update, context):
+    chat_id = update.message.chat.id
+    user = context.bot.get_chat_member(update.message.chat.id, update.message.from_user.id)
+    is_admin = 'administrator' == user.status
+    is_creator = 'creator' == user.status
+    return is_admin or is_creator
+
+def has_voice(update, context):
+    chat_id = update.message.chat.id
+    user_id = update.message.from_user.id
+    is_voiced = execute_select('SELECT 1 FROM voiced WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
+    return len(is_voiced) > 0 
+
+def voice(update, context):
+    chat_id = update.message.chat.id
+    is_admin = has_admin(update, context)
+    if not is_admin:
+        update.message.reply_text(u'Nur Admins können diese Funktion benutzen')
+        return
+    for mention in update.message.entities:
+        if mention.user is not None:
+            user_id = mention.user.id
+            user_name = mention.user.first_name
+            execute_query('DELETE FROM voiced WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
+            execute_query('INSERT INTO voiced (chat_id, member_id) VALUES (?, ?)', [chat_id, user_id])
+            update.message.reply_text(u'%s wurde authorisiert' % (user_name))
+
+def revoke(update, context):
+    chat_id = update.message.chat.id
+    is_admin = has_admin(update, context)
+    if not is_admin:
+        update.message.reply_text(u'Nur Admins können diese Funktion benutzen')
+        return
+    for mention in update.message.entities:
+        if mention.user is not None:
+            user_id = mention.user.id
+            user_name = mention.user.first_name
+            execute_query('DELETE FROM voiced WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
+            update.message.reply_text(u'%s kann die erweiterten Funktionen nicht mehr nutzen' % (user_name))
 
 def add_location(update, context):
     global locations
     add_chatroom(update.message.chat.id)
     chat_id = update.message.chat.id
     location = ' '.join(context.args).strip()
-    from_user = context.bot.get_chat_member(update.message.chat.id, update.message.from_user.id)
-    is_admin = 'administrator' == from_user.status
-    is_creator = 'creator' == from_user.status
-    if not is_creator and not is_admin:
-        update.message.reply_text(u'Du bist kein Admin, sorry!')
+    is_admin = has_admin(update, context)
+    is_voiced = has_voice(update, context)
+    if not is_admin and not is_voiced:
+        update.message.reply_text(u'Du hast keine Berechtigung einen Ort hinzuzufügen, frage einen Admin ob er dich dazu berechtigt.')
         return
     if chat_id not in locations:
         locations[chat_id] = []
@@ -230,7 +263,11 @@ Folgende Befhele stehen euch zur Auswahl:
 
 [Admins]
  /stammtischtag oder /st: Legt den Tag des Stammtischs fest
+ /voice [1..x]: Der angegebene Benutzer kann die erweiterte Funktionen nutzen
+
+[Erweiterte Funktionen]
  /add: Ein Stammtischziel hinzufügen
+
 
 [Alle]
  /list: Alle Stammtischziele anzeigen
@@ -326,6 +363,14 @@ dispatcher.add_handler(add_handler)
 # Listet alle Stammtischzielen
 list_handler = CommandHandler('list', list_locations)
 dispatcher.add_handler(list_handler)
+
+# Benutzer mehr Berechtigung geben
+voice_handler = CommandHandler('voice', voice)
+dispatcher.add_handler(voice_handler)
+
+# Benutzer mehr Berechtigung geben
+revoke_handler = CommandHandler('revoke', revoke)
+dispatcher.add_handler(revoke_handler)
 
 # Setzt den Stammtischtag
 stammtischtag_handler = CommandHandler('stammtischtag', set_stammtischtag)
