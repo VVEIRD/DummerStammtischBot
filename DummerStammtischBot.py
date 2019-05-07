@@ -125,7 +125,7 @@ def execute_select(query, args):
 
 def add_chatroom(chat_id):
     if chat_id not in chatrooms:
-        chatrooms[chat_id] = DEFAULT_STAMMTISCHTAG
+        chatrooms[chat_id] = [DEFAULT_STAMMTISCHTAG, 0, 0]
         print 'New chatroom: ' + str(chat_id)
         execute_query('INSERT INTO chatrooms (chat_id, stammtischtag, last_notified, last_voting_notification) VALUES (?, ?, 0, 0)',  [chat_id, chatrooms[chat_id]])
 
@@ -280,7 +280,7 @@ def vote(update, context):
                 execute_query('DELETE FROM votings WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
                 execute_query('INSERT INTO votings (chat_id, member_id, member_name, location_id) VALUES (?, ?, ?, ?)', [chat_id, user_id, user_name, auswahl])
                 location = execute_select('SELECT location FROM locations WHERE chat_id = ? AND l_id = ?', [chat_id, auswahl])[0]
-                update.message.reply_text(u'Du hast für %s gestimmt' % location)
+                update.message.reply_text(u'%s hat für %s gestimmt' % (user_name, location))
         except ValueError:
             a = 0
 
