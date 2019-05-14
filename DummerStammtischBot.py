@@ -354,7 +354,7 @@ def vote(update, context):
                 execute_query('DELETE FROM votings WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
                 execute_query('INSERT INTO votings (chat_id, member_id, member_name, location_id) VALUES (?, ?, ?, ?)', [chat_id, user_id, user_name, auswahl])
                 location = execute_select('SELECT location FROM locations WHERE chat_id = ? AND l_id = ?', [chat_id, auswahl])[0]
-                update.message.reply_text(u'%s hast für %s gestimmt' % (update.message.from_user.first_name, location[0]))
+                update.message.reply_text(u'%s hat für %s gestimmt' % (update.message.from_user.first_name, location[0]))
         except ValueError:
             a = 0
 
