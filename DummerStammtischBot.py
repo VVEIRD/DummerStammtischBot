@@ -349,12 +349,21 @@ def vote(update, context):
     user_name = update.message.from_user.first_name
     if chat_id in chatrooms and is_voting_time(chat_id):
         try:
-            auswahl = int(update.message.text.strip())
-            if auswahl >= 1 and auswahl <= len(locations[chat_id]):
-                execute_query('DELETE FROM votings WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
-                execute_query('INSERT INTO votings (chat_id, member_id, member_name, location_id) VALUES (?, ?, ?, ?)', [chat_id, user_id, user_name, auswahl])
-                location = execute_select('SELECT location FROM locations WHERE chat_id = ? AND l_id = ?', [chat_id, auswahl])[0]
-                update.message.reply_text(u'%s hast für %s gestimmt' % (update.message.from_user.first_name, location[0]))
+            parts = update.message.text.strip().split()
+            # Die Nachricht darf nur aus Leezeichen getrennten Nummern bestehen
+            for auswahl in parts:
+                if not vote.isdigit():
+                    return
+                  
+            message = u'%s hat gestimmt für:\n' % update.message.from_user.first_name
+            execute_query('DELETE FROM votings WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
+            for auswahl in parts:
+                if auswahl >= 1 and auswahl <= len(locations[chat_id]):                    
+                    execute_query('INSERT INTO votings (chat_id, member_id, member_name, location_id) VALUES (?, ?, ?, ?)', [chat_id, user_id, user_name, auswahl])
+                    location = execute_select('SELECT location FROM locations WHERE chat_id = ? AND l_id = ?', [chat_id, auswahl])[0]
+                    message += location[0]+"\n"
+            update.message.reply_text(message)
+            
         except ValueError:
             a = 0
 
