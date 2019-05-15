@@ -358,6 +358,7 @@ def vote(update, context):
             message = u'%s hat gestimmt für:\n' % update.message.from_user.first_name
             execute_query('DELETE FROM votings WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
             for auswahl in parts:
+                auswahl = int(auswahl)
                 if auswahl >= 1 and auswahl <= len(locations[chat_id]):                    
                     execute_query('INSERT INTO votings (chat_id, member_id, member_name, location_id) VALUES (?, ?, ?, ?)', [chat_id, user_id, user_name, auswahl])
                     location = execute_select('SELECT location FROM locations WHERE chat_id = ? AND l_id = ?', [chat_id, auswahl])[0]
