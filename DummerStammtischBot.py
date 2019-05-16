@@ -352,7 +352,7 @@ def vote(update, context):
             parts = update.message.text.strip().split()
             # Die Nachricht darf nur aus Leezeichen getrennten Nummern bestehen
             for auswahl in parts:
-                if not vote.isdigit():
+                if not auswahl.isdigit():
                     return
                   
             message = u'%s hat gestimmt für:\n' % update.message.from_user.first_name
@@ -364,7 +364,6 @@ def vote(update, context):
                     location = execute_select('SELECT location FROM locations WHERE chat_id = ? AND l_id = ?', [chat_id, auswahl])[0]
                     message += location[0]+"\n"
             update.message.reply_text(message)
-            
         except ValueError:
             a = 0
 
