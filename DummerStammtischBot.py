@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+ # -*- coding: utf-8 -*-
 ## Stammtischbot
 #
 # Macht Mittwochs eine Umfrage um herauszufinden wohin es zum Stammtisch gehen soll
@@ -269,6 +269,7 @@ def left_member(update, context):
     if member.username == 'DummerStammtischBot':
         remove_chatroom(update.message.chat.id)
 
+
 # Zeigt alle verfuegbaren Funktionen an
 def help(update, context):
     context.bot.send_message(chat_id=update.message.chat_id, text=u'''Ich bin der StammtischBot!\r\n
@@ -285,11 +286,13 @@ Folgende Befhele stehen euch zur Auswahl:
  /list: Alle Stammtischziele anzeigen
  /help: Diese Nachricht anzeigen''')
 
+
 # Gibt aus, ob der Chat im Abstimmzeitraum befindet
-def is_voting_time(chat_id):
-    now = int(time.time())
-    weekday = datetime.datetime.today().weekday()+1
-    hour = datetime.datetime.now().hour
+def is_voting_time(chat_id, message_date):
+    # Weekday of Message
+    weekday = message_date.weekday()+1
+    # Hour of message
+    hour = message_date.hour
     # Am Tag vor dem Stammtisch soll abgestimmt werden
     dayToNotifyAt = chatrooms[chat_id][0]-1
     # Zeitpunkt an dem das letztre Voting gestartet wurde
@@ -298,6 +301,7 @@ def is_voting_time(chat_id):
     lastVotingNotified = chatrooms[chat_id][2]
     # Wir wollen am Vortag zwischen 8 und 18 Uhr voten
     return dayToNotifyAt == weekday and hour >= 8 and hour < 18
+
 
 # Informiert den Chat ueber diverse Dinge
 def notifier(context):
@@ -347,7 +351,8 @@ def vote(update, context):
     chat_id = update.message.chat.id
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
-    if chat_id in chatrooms and is_voting_time(chat_id):
+    message_date = update.message.date
+    if chat_id in chatrooms and is_voting_time(chat_id, message_date):
         try:
             auswahl = int(update.message.text.strip())
             if auswahl >= 1 and auswahl <= len(locations[chat_id]):
@@ -370,7 +375,7 @@ start_handler = CommandHandler('start', start)
 dispatcher.add_handler(start_handler)
 
 # Job jede Minute
-job_minute = jobqueue.run_repeating(notifier, interval=600, first=0)
+job_minute = jobqueue.run_repeating(notifier, interval=600, first=1200)
 
 # Fuegt eine Location zu den moeglichen Stammtischzielen hinzu
 add_handler = CommandHandler('add', add_location)
