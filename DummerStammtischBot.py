@@ -231,6 +231,25 @@ def list_locations(update, context):
     else:
         context.bot.send_message(chat_id=update.message.chat_id, text=u'Es gibt noch keine Stammtischziele, füge welche mit /add hinzu')
 
+# Loescht einen Ort. Darf nut von Admins gemacht werden
+def del_location(update, context):
+    global locations
+    add_chatroom(update.message.chat.id)
+    chat_id = update.message.chat.id
+    location_id = int(' '.join(context.args).strip())
+    is_admin = has_admin(update, context)
+    if not is_admin:
+        update.message.reply_text(u'Du hast keine Berechtigung einen Ort zu löschen, frage einen Admin ob den Ort für dich löscht.')
+        return
+    if chat_id not in locations:
+        locations[chat_id] = []
+    if location and location in locations[chat_id]:
+        execute_query('''DELETE FROM locations WHERE chat_id = ? AND l_id = ?''', (chat_id, location))
+        locations = load_locations()
+        update.message.reply_text('Das Ziel ' + location + u' wurde gelöscht')
+    elif len(locations) > MAX_LOCATIONS:
+        update.message.reply_text('Ihr habt das Limit von %s Locations erreicht, sorry!')
+
 # Setzt den Tag des Stammtisches. Davon hängt ab wann abgestimmt wird. Duerfen nur Admins machen.
 def set_stammtischtag(update, context):
     chat_id = update.message.chat.id
@@ -281,6 +300,7 @@ Folgende Befhele stehen euch zur Auswahl:
  /revoke [1..x]: Entzieht den angegebenen Benutzern die Rechte auf die erweiterten funktionen.
 [Erweiterte Funktionen]
  /add: Ein Stammtischziel hinzufügen
+ /del: Löscht einen Ort
 
 [Alle]
  /list: Alle Stammtischziele anzeigen
@@ -380,6 +400,10 @@ job_minute = jobqueue.run_repeating(notifier, interval=600, first=1200)
 # Fuegt eine Location zu den moeglichen Stammtischzielen hinzu
 add_handler = CommandHandler('add', add_location)
 dispatcher.add_handler(add_handler)
+
+# Loescht eine Location
+del_handler = CommandHandler('del', del_location)
+dispatcher.add_handler(del_handler)
 
 # Listet alle Stammtischzielen
 list_handler = CommandHandler('list', list_locations)
