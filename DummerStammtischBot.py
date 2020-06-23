@@ -244,14 +244,16 @@ def del_location(update, context):
     if chat_id not in locations:
         locations[chat_id] = []
     loc_exist = False
+    loc_name = ''
     for loc in locations[chat_id]:
         if loc[0] == location_id:
             loc_exist = True
+            loc_name = loc[1]
             break
     if location_id and loc_exist:
         execute_query('''DELETE FROM locations WHERE chat_id = ? AND l_id = ?''', (chat_id, location_id))
         locations = load_locations()
-        update.message.reply_text('Das Ziel ' + str(location_id) + u' wurde gelöscht')
+        update.message.reply_text('Das Ziel ' + str(location_id) + '. ' + loc_name + u' wurde gelöscht')
     else:
         update.message.reply_text('Die Location existiert nicht (mehr)!')
 
