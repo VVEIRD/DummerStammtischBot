@@ -243,12 +243,17 @@ def del_location(update, context):
         return
     if chat_id not in locations:
         locations[chat_id] = []
-    if location and location in locations[chat_id]:
-        execute_query('''DELETE FROM locations WHERE chat_id = ? AND l_id = ?''', (chat_id, location))
+    loc_exist = False
+    for loc in locations[chat_id]:
+        if loc[0] == location_id:
+            loc_exist = True
+            break
+    if location_id and loc_exist:
+        execute_query('''DELETE FROM locations WHERE chat_id = ? AND l_id = ?''', (chat_id, location_id))
         locations = load_locations()
-        update.message.reply_text('Das Ziel ' + location + u' wurde gelöscht')
-    elif len(locations) > MAX_LOCATIONS:
-        update.message.reply_text('Ihr habt das Limit von %s Locations erreicht, sorry!')
+        update.message.reply_text('Das Ziel ' + str(location_id) + u' wurde gelöscht')
+    else:
+        update.message.reply_text('Die Location existiert nicht (mehr)!')
 
 # Setzt den Tag des Stammtisches. Davon hängt ab wann abgestimmt wird. Duerfen nur Admins machen.
 def set_stammtischtag(update, context):
