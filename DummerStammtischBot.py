@@ -382,7 +382,7 @@ def vote(update, context):
     if chat_id in chatrooms and is_voting_time(chat_id, message_date):
         try:
             auswahl = int(update.message.text.strip())
-            if auswahl >= 1 and auswahl <= len(locations[chat_id]):
+            if auswahl >= 1 and auswahl in locations[chat_id]:
                 execute_query('DELETE FROM votings WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
                 execute_query('INSERT INTO votings (chat_id, member_id, member_name, location_id) VALUES (?, ?, ?, ?)', [chat_id, user_id, user_name, auswahl])
                 location = execute_select('SELECT location FROM locations WHERE chat_id = ? AND l_id = ?', [chat_id, auswahl])[0]
