@@ -29,13 +29,29 @@ conn = sqlite3.connect('DummerStammtischBot.db')
 
 c = conn.cursor()
 
+def add_column_if_not_exists(c, table_name, new_column, new_column_type):
+    tab_exists=False
+    
+    for row in c.execute('SELECT name FROM sqlite_master WHERE type= ? AND name = ?', ['table', table_name]):
+        tab_exists=True
+    
+    if tab_exists:
+        columns = [i[1] for i in c.execute('PRAGMA table_info(' + str(table_name) + ')')]
+        if new_column not in columns:
+            c.execute('ALTER TABLE ' + str(table_name) + ' ADD COLUMN ' + str(new_column) + ' ' + str(new_column_type))
+
+
 # Create table
 c.execute('''CREATE TABLE IF NOT EXISTS chatrooms
-             (chat_id integer,
-                stammtischtag integer,
-                last_notified integer,
-                last_voting_notification integer
+             (chat_id INTEGER,
+                stammtischtag INTEGER,
+                last_notified INTEGER,
+                last_voting_notification INTEGER,
+                last_organizer INTEGER
               )''')
+
+# Add last_organizer for existing databases
+add_column_if_not_exists(c, 'chatrooms', 'last_organizer', 'INTEGER')
 
 c.execute('''CREATE TABLE IF NOT EXISTS "locations" (
     "chat_id"    INTEGER,
@@ -57,6 +73,15 @@ c.execute('''CREATE TABLE IF NOT EXISTS "voiced" (
     "member_id"    INTEGER,
     PRIMARY KEY("chat_id","member_id")
 )''')
+
+c.execute('''CREATE TABLE IF NOT EXISTS "member_credits" (
+    "chat_id"      INTEGER,
+    "member_id"    INTEGER,
+    "credits"      INTEGER,
+    PRIMARY KEY("chat_id","member_id")
+)''')
+
+
 
 ######
 ## Liste mit den Locations fuer den Stammtisch
@@ -92,8 +117,8 @@ def load_chatrooms():
     conn = sqlite3.connect('DummerStammtischBot.db')
     c = conn.cursor()
     chatrooms = {}
-    for row in c.execute('SELECT chat_id, stammtischtag, last_notified, last_voting_notification FROM chatrooms'):
-        chatrooms[row[0]] = [row[1],row[2], row[3]]
+    for row in c.execute('SELECT chat_id, stammtischtag, last_notified, last_voting_notification, last_organizer FROM chatrooms'):
+        chatrooms[row[0]] = [row[1],row[2], row[3], row[4]]
     conn.close()
     return chatrooms
 
@@ -329,7 +354,6 @@ def is_voting_time(chat_id, message_date):
     # Wir wollen am Vortag zwischen 8 und 18 Uhr voten
     return dayToNotifyAt == weekday and hour >= 8 and hour < 18
 
-
 # Informiert den Chat ueber diverse Dinge
 def notifier(context):
     for chat_id in chatrooms:
@@ -359,6 +383,7 @@ def notifier(context):
             execute_query('UPDATE chatrooms SET last_notified = ? WHERE chat_id = ?', [now, chat_id])
             chatrooms[chat_id][1] = now
         if dayToNotifyAt == weekday and lastVotingNotified+518400 < now and hour >= 18:
+            last_organizer = chatrooms[chat_id][3]
             conn = sqlite3.connect('DummerStammtischBot.db')
             c = conn.cursor()
             message = 'Die Abstimmungszeit ist vorbei! Ihr habt wie folgt abgestimmt:\n\n'
@@ -366,11 +391,19 @@ def notifier(context):
             for row in c.execute('select (SELECT location FROm locations l WHERE l.l_id = v.location_id AND l.chat_id = v.chat_id) location, count(*) c FROM votings v WHERE chat_id = ? GROUP BY location_id ORDER BY c DESC', [chat_id]):
                 message += '%s. %s (%s Stimmen)\n' % (i, row[0], row[1])
                 i += 1
-            organisierer = c.execute('SELECT member_name FROM votings v WHERE chat_id = ? AND member_id IN (SELECT  member_id FROM votings v2 WHERE chat_id = ? ORDER BY RANDOM() LIMIT 1)' , [chat_id, chat_id]).fetchone()[0]
-            message += '\n%s darf diese Woche den Stammtisch organisieren' % organisierer
+            organisierer = c.execute('SELECT member_name, member_id FROM votings v WHERE chat_id = ? AND member_id IN (SELECT member_id FROM votings v2 WHERE chat_id = ? AND member_id IS NOT ? ORDER BY RANDOM() LIMIT 1)' , [chat_id, chat_id, last_organizer]).fetchone()
+            message += '\n%s darf diese Woche den Stammtisch organisieren' % org[0]
+            org_member_id = org[1]
             context.bot.send_message(chat_id=chat_id, text=message)
-            execute_query('UPDATE chatrooms SET last_voting_notification = ? WHERE chat_id = ?', [now, chat_id])
+            execute_query('UPDATE chatrooms SET last_voting_notification = ?, last_organizer = ? WHERE chat_id = ?', [now, org_member_id, chat_id])
+            # If User was never organizer, they get 4 credits
+            credits = execute_select('SELECT credits FROM member_credits WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
+            if len(credits) == 0:
+                execute_query('INSERT INTO member_credits(chat_id, member_id, credits) VALUES (?, ?, ?)', [chat_id, member_id, 4])
+            # Add a credit to the member
+            execute_query('UPDATE member_credits SET credits = credits+1 WHERE chat_id = ? AND member_id = ?', [chat_id, member_id])
             chatrooms[chat_id][2] = now
+            chatrooms[chat_id][3] = org_member_id
 
 # Abstimmfunktion, der benutzer muss nur eine valide Zahl in den Chat eintippen, damit er abstimmt.
 # Er wird vom Bot informiert, wenn er abgestimmt hat.
@@ -389,6 +422,79 @@ def vote(update, context):
                 update.message.reply_text(u'%s hat für %s gestimmt' % (update.message.from_user.first_name, location[0]))
         except ValueError:
             a = 0
+
+
+# Prueft ob der aufrufende Benutzer genug credits zum aufrufen der ot_today funktion hat
+#  Falls ja, kann dieser User die erweiterten Funktionen des Bots nutzen
+def has_enought_member_credits(update, context):
+    chat_id = update.message.chat.id
+    user_id = update.message.from_user.id
+    credits = execute_select('SELECT credits FROM member_credits WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
+    # If User was never organizer, they get 4 credits
+    if len(credits) == 0:
+        execute_query('INSERT INTO member_credits(chat_id, member_id, credits) VALUES (?, ?, ?)', [chat_id, member_id, 4])
+        credits = execute_select('SELECT credits FROM member_credits WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
+    credits = credits.fetchone()[0]
+    enougth_credits = False
+    if credits >= 3:
+        enougth_credits = True
+        execute_query('UPDATE member_credits SET credits = credits-3 WHERE chat_id = ? AND member_id = ?', [chat_id, member_id])
+    return enougth_credits
+
+
+# Gibt aus, ob der /nottoday Befehl vom Organisator durchgeführt werden kann
+def is_nottoday_time(chat_id, message_date):
+    # Weekday of Message
+    weekday = message_date.weekday()+1
+    # Hour of message
+    hour = message_date.hour
+    # Am Tag vor dem Stammtisch soll abgestimmt werden
+    dayToNotifyAt = chatrooms[chat_id][0]-1
+    # Zeitpunkt an dem das letztre Voting gestartet wurde
+    lastNotified = chatrooms[chat_id][1]
+    # Zeitpunkt an dem das letztre Voting beendet wurde
+    lastVotingNotified = chatrooms[chat_id][2]
+    # Wir wollen am Vortag zwischen 8 und 18 Uhr voten
+    return dayToNotifyAt == weekday and hour >= 18 and hour <) 19
+
+# Funktion wenn der Organisator heute NICHT organisieren will
+def not_today(update, context):
+    chat_id = update.message.chat.id
+    user_id = update.message.from_user.id
+    user_name = update.message.from_user.first_name
+    message_date = update.message.date
+    if chat_id in chatrooms and is_nottoday_time(chat_id, message_date) and user_id == chatrooms[chat_id][3]:
+        if has_enought_member_credits(update, context):
+            update.message.reply_text(u'%s möchte heute nicht den Stammtisch organisieren, es wird ein neuer Organisator gewählt.' % (update.message.from_user.first_name) )
+            last_organizer = chatrooms[chat_id][3]
+            conn = sqlite3.connect('DummerStammtischBot.db')
+            c = conn.cursor()
+            message = 'Die Abstimmungszeit ist vorbei! Ihr habt wie folgt abgestimmt:\n\n'
+            i = 1
+            for row in c.execute('select (SELECT location FROm locations l WHERE l.l_id = v.location_id AND l.chat_id = v.chat_id) location, count(*) c FROM votings v WHERE chat_id = ? GROUP BY location_id ORDER BY c DESC', [chat_id]):
+                message += '%s. %s (%s Stimmen)\n' % (i, row[0], row[1])
+                i += 1
+            organisierer = c.execute('SELECT member_name, member_id FROM votings v WHERE chat_id = ? AND member_id IN (SELECT member_id FROM votings v2 WHERE chat_id = ? AND member_id IS NOT ? ORDER BY RANDOM() LIMIT 1)' , [chat_id, chat_id, last_organizer]).fetchone()
+            message += '\n%s darf diese Woche den Stammtisch organisieren' % org[0]
+            org_member_id = org[1]
+            context.bot.send_message(chat_id=chat_id, text=message)
+            execute_query('UPDATE chatrooms SET last_voting_notification = ?, last_organizer = ? WHERE chat_id = ?', [now, org_member_id, chat_id])
+            # If User was never organizer, they get 4 credits
+            credits = execute_select('SELECT credits FROM member_credits WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
+            if len(credits) == 0:
+                execute_query('INSERT INTO member_credits(chat_id, member_id, credits) VALUES (?, ?, ?)', [chat_id, member_id, 4])
+            # Add a credit to the member
+            execute_query('UPDATE member_credits SET credits = credits+1 WHERE chat_id = ? AND member_id = ?', [chat_id, member_id])
+            chatrooms[chat_id][2] = now
+            chatrooms[chat_id][3] = org_member_id
+        else:
+            update.message.reply_text(u'Du hast leider nicht genug Credits um die Organisation abzugeben!')
+    elif chat_id in chatrooms and is_nottoday_time(chat_id, message_date):
+        update.message.reply_text(u'Der Zeitraum die Organisation abzugeben ist leider schon vorbei!')
+    elif chat_id in chatrooms and user_id != chatrooms[chat_id][3]:
+        update.message.reply_text(u'Du Organisierst den Stammtisch heute gar nicht!')
+    else:
+        update.message.reply_text(u'Etwas ist schiefgegangen?!?!!?')
 
 ######
 ## Bot Stuff. Init, Mappen der handler/methoden
