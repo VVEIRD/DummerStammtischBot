@@ -336,7 +336,8 @@ Folgende Befhele stehen euch zur Auswahl:
 
 [Alle]
  /list: Alle Stammtischziele anzeigen
- /help: Diese Nachricht anzeigen''')
+ /help: Diese Nachricht anzeigen
+ /not_today: Der aktuelle Organisator kann die Orge eine Stunde nach der Entscheidung abgeben''')
 
 
 # Gibt aus, ob der Chat im Abstimmzeitraum befindet
@@ -455,7 +456,7 @@ def is_nottoday_time(chat_id, message_date):
     # Zeitpunkt an dem das letztre Voting beendet wurde
     lastVotingNotified = chatrooms[chat_id][2]
     # Wir wollen am Vortag zwischen 8 und 18 Uhr voten
-    return dayToNotifyAt == weekday and hour >= 18 and hour <) 19
+    return dayToNotifyAt == weekday and hour >= 18 and hour <= 19
 
 # Funktion wenn der Organisator heute NICHT organisieren will
 def not_today(update, context):
@@ -529,6 +530,10 @@ dispatcher.add_handler(voice_handler)
 # Benutzer mehr Berechtigung geben
 revoke_handler = CommandHandler('revoke', revoke)
 dispatcher.add_handler(revoke_handler)
+
+# Organisator gibt orga ab
+not_today_handler = CommandHandler('not_today', not_today)
+dispatcher.add_handler(not_today_handler)
 
 # Setzt den Stammtischtag
 stammtischtag_handler = CommandHandler('stammtischtag', set_stammtischtag)
