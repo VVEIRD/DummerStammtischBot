@@ -18,6 +18,8 @@ import sys
 
 os.environ['TZ'] = 'Europe/Berlin'
 
+TIME_ZONE_MOD=+2
+
 TOKEN = sys.argv[1]
 
 DEFAULT_STAMMTISCHTAG = 3
@@ -353,7 +355,7 @@ def is_voting_time(chat_id, message_date):
     # Weekday of Message
     weekday = message_date.weekday()+1
     # Hour of message
-    hour = message_date.hour+2
+    hour = message_date.hour+TIME_ZONE_MOD
     # Am Tag vor dem Stammtisch soll abgestimmt werden
     dayToNotifyAt = chatrooms[chat_id][0]-1
     # Zeitpunkt an dem das letztre Voting gestartet wurde
@@ -379,6 +381,7 @@ def notifier(context):
         now = int(time.time())
         weekday = datetime.datetime.today().weekday()+1
         hour = datetime.datetime.now().hour
+        print('Hour: %s' % (hour))
         # Am Tag vor dem Stammtisch soll abgestimmt werden
         dayToNotifyAt = chatrooms[chat_id][0]-1
         # Zeitpunkt an dem das letztre Voting gestartet wurde
@@ -411,8 +414,8 @@ def notifier(context):
                 message += '%s. %s (%s Stimmen)\n' % (i, row[0], row[1])
                 i += 1
             organisierer = c.execute('SELECT member_name, member_id FROM votings v WHERE chat_id = ? AND member_id IN (SELECT member_id FROM votings v2 WHERE chat_id = ? AND member_id IS NOT ? ORDER BY RANDOM() LIMIT 1)' , [chat_id, chat_id, last_organizer]).fetchone()
-            message += '\n%s darf diese Woche den Stammtisch organisieren' % org[0]
-            org_member_id = org[1]
+            message += '\n%s darf diese Woche den Stammtisch organisieren' % organisierer[0]
+            org_member_id = organisierer[1]
             context.bot.send_message(chat_id=chat_id, text=message)
             execute_query('UPDATE chatrooms SET last_voting_notification = ?, last_organizer = ? WHERE chat_id = ?', [now, org_member_id, chat_id])
             # If User was never organizer, they get 4 credits
@@ -539,7 +542,7 @@ start_handler = CommandHandler('start', start)
 dispatcher.add_handler(start_handler)
 
 # Job jede Minute
-job_minute = jobqueue.run_repeating(notifier, interval=600, first=1200)
+job_minute = jobqueue.run_repeating(notifier, interval=600, first=20)
 
 # Fuegt eine Location zu den moeglichen Stammtischzielen hinzu
 add_handler = CommandHandler('add', add_location)
