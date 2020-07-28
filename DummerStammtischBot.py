@@ -91,10 +91,15 @@ def load_locations():
     conn = sqlite3.connect('DummerStammtischBot.db')
     c = conn.cursor()
     locations = {}
+    print('Lade Locations...')
+    print('-----------------------------------')
     for row in c.execute('SELECT chat_id, l_id, location FROM locations'):
         if row[0] not in locations:
+            print ('Chat ID: %s' % (str(row[0])))
+            print('-----------------------------------')
             locations[row[0]] = []
         locations[row[0]].append((row[1], row[2]))
+        print(u'Location hinzugefuegt: ID: %d, %d' % (row[0], row[1]) )
     conn.close()
     return locations
 
@@ -409,21 +414,33 @@ def notifier(context):
 # Abstimmfunktion, der benutzer muss nur eine valide Zahl in den Chat eintippen, damit er abstimmt.
 # Er wird vom Bot informiert, wenn er abgestimmt hat.
 def vote(update, context):
+    print('------------------------------------')
+    print ('Voting...')
+    print('------------------------------------')
     chat_id = update.message.chat.id
     user_id = update.message.from_user.id
     user_name = update.message.from_user.first_name
     message_date = update.message.date
+    print(u'%s hat mit %s abgestimmt' % (user_name, update.message.text))
+    print('Is voting time: %s' % (str(is_voting_time(chat_id, message_date))))
     if chat_id in chatrooms and is_voting_time(chat_id, message_date):
+        print ('Chatgroup is included')
         try:
             auswahl = int(update.message.text.strip())
-            if auswahl >= 1 and auswahl in locations[chat_id]:
+            valid_selection = False
+            for l in locations[chat_id]:
+                if auswahl == l[0]:
+                    valid_selection = True
+            if auswahl >= 1 and valid_selection:
+                print('Auswahl ist vorhanden')
                 execute_query('DELETE FROM votings WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
                 execute_query('INSERT INTO votings (chat_id, member_id, member_name, location_id) VALUES (?, ?, ?, ?)', [chat_id, user_id, user_name, auswahl])
                 location = execute_select('SELECT location FROM locations WHERE chat_id = ? AND l_id = ?', [chat_id, auswahl])[0]
+                print('Location ist %s' % (location[0]))
                 update.message.reply_text(u'%s hat für %s gestimmt' % (update.message.from_user.first_name, location[0]))
         except ValueError:
             a = 0
-
+    print('------------------------------------')
 
 # Prueft ob der aufrufende Benutzer genug credits zum aufrufen der ot_today funktion hat
 #  Falls ja, kann dieser User die erweiterten Funktionen des Bots nutzen
