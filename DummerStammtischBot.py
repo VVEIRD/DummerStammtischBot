@@ -1,4 +1,5 @@
- # -*- coding: utf-8 -*-
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 ## Stammtischbot
 #
 # Macht Mittwochs eine Umfrage um herauszufinden wohin es zum Stammtisch gehen soll
@@ -14,6 +15,8 @@ import os
 import logging
 from threading import Thread
 import sys
+
+os.environ['TZ'] = 'Europe/Berlin'
 
 TOKEN = sys.argv[1]
 
@@ -165,19 +168,19 @@ def execute_select(query, args):
 def add_chatroom(chat_id):
     if chat_id not in chatrooms:
         chatrooms[chat_id] = [DEFAULT_STAMMTISCHTAG, 0, 0]
-        print 'New chatroom: ' + str(chat_id)
+        print('New chatroom: ' + str(chat_id))
         execute_query('INSERT INTO chatrooms (chat_id, stammtischtag, last_notified, last_voting_notification) VALUES (?, ?, 0, 0)',  [chat_id, chatrooms[chat_id][0]])
 
 # Entfernt alle Daten ueber einen Gruppenchat, asu dem der Bot entfernt wurde
 def remove_chatroom(chat_id):
     if chat_id in chatrooms:
-        print 'Removed from Chat: ' + str(chat_id)
+        print('Removed from Chat: ' + str(chat_id))
         chatrooms.pop(chat_id, None)
         locations.pop(chat_id, None)
         execute_query('DELETE FROM chatrooms WHERE chat_id = ?', [chat_id])
         execute_query('DELETE FROM votings WHERE chat_id = ?', [chat_id])
         execute_query('DELETE FROM locations WHERE chat_id = ?', [chat_id])
-        print 'Removed from chatroom: %s' % chat_id
+        print('Removed from chatroom: %s' % chat_id)
 
 def start(update, context):
     add_chatroom(update.message.chat.id)
@@ -350,7 +353,7 @@ def is_voting_time(chat_id, message_date):
     # Weekday of Message
     weekday = message_date.weekday()+1
     # Hour of message
-    hour = message_date.hour
+    hour = message_date.hour+2
     # Am Tag vor dem Stammtisch soll abgestimmt werden
     dayToNotifyAt = chatrooms[chat_id][0]-1
     # Zeitpunkt an dem das letztre Voting gestartet wurde
@@ -358,6 +361,16 @@ def is_voting_time(chat_id, message_date):
     # Zeitpunkt an dem das letztre Voting beendet wurde
     lastVotingNotified = chatrooms[chat_id][2]
     # Wir wollen am Vortag zwischen 8 und 18 Uhr voten
+    print('--------------------------------------------------')
+    print('Check is voting time')
+    print('--------------------------------------------------')
+    print('Weekday: %d' % (weekday))
+    print('Hour: %d' % (hour))
+    print('Day to notify: %d' % (dayToNotifyAt))
+    print('Last voting: %d' % (lastNotified))
+    print('Last voting ended: %d' % (lastVotingNotified))
+    print('Notify today: %s' % (str(dayToNotifyAt == weekday and hour >= 8 and hour < 18)))
+    print('--------------------------------------------------')
     return dayToNotifyAt == weekday and hour >= 8 and hour < 18
 
 # Informiert den Chat ueber diverse Dinge
@@ -374,7 +387,7 @@ def notifier(context):
         lastVotingNotified = chatrooms[chat_id][2]
         # Wir wollen am Vortag installieren nur einmal pro Woche nach 8 Uhr
         if dayToNotifyAt == weekday and lastNotified+518400 < now and hour >= 8:
-            print "Notifying %s" % chat_id
+            print("Notifying %s" % chat_id)
             execute_query('DELETE FROM votings WHERE chat_id = ?', [chat_id])
             message = u'Hallo, morgen ist wieder Stammtisch. Bitte voted bis heute um 18 Uhr, für ein Ziel.\nWenn man voted muss man kommen, sonst gibts Haue!\n\n'
             if chat_id in locations:
