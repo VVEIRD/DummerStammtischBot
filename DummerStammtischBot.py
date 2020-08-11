@@ -419,7 +419,7 @@ def notifier(context):
             context.bot.send_message(chat_id=chat_id, text=message)
             execute_query('UPDATE chatrooms SET last_voting_notification = ?, last_organizer = ? WHERE chat_id = ?', [now, org_member_id, chat_id])
             # If User was never organizer, they get 4 credits
-            credits = execute_select('SELECT credits FROM member_credits WHERE chat_id = ? AND member_id = ?', [chat_id, user_id])
+            credits = execute_select('SELECT credits FROM member_credits WHERE chat_id = ? AND member_id = ?', [chat_id, member_id])
             if len(credits) == 0:
                 execute_query('INSERT INTO member_credits(chat_id, member_id, credits) VALUES (?, ?, ?)', [chat_id, member_id, 4])
             # Add a credit to the member
