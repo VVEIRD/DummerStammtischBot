@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 ## Stammtischbot
 #
@@ -18,7 +18,7 @@ import sys
 
 os.environ['TZ'] = 'Europe/Berlin'
 
-TIME_ZONE_MOD=+2
+TIME_ZONE_MOD=+1
 
 TOKEN = sys.argv[1]
 
@@ -171,7 +171,7 @@ def add_chatroom(chat_id):
     if chat_id not in chatrooms:
         chatrooms[chat_id] = [DEFAULT_STAMMTISCHTAG, 0, 0]
         print('New chatroom: ' + str(chat_id))
-        execute_query('INSERT INTO chatrooms (chat_id, stammtischtag, last_notified, last_voting_notification) VALUES (?, ?, 0, 0)',  [chat_id, chatrooms[chat_id][0]])
+        execute_query('INSERT INTO chatrooms (chat_id, stammtischtag, last_notified, last_voting_notification, last_organizer) VALUES (?, ?, 0, 0, 1)',  [chat_id, chatrooms[chat_id][0]])
 
 # Entfernt alle Daten ueber einen Gruppenchat, asu dem der Bot entfernt wurde
 def remove_chatroom(chat_id):
@@ -413,17 +413,26 @@ def notifier(context):
             for row in c.execute('select (SELECT location FROm locations l WHERE l.l_id = v.location_id AND l.chat_id = v.chat_id) location, count(*) c FROM votings v WHERE chat_id = ? GROUP BY location_id ORDER BY c DESC', [chat_id]):
                 message += '%s. %s (%s Stimmen)\n' % (i, row[0], row[1])
                 i += 1
+            print('------------------------------------')
+            print('Select for organizer')
+            print('------------------------------------')
+            print('SELECT member_name, member_id FROM votings v WHERE chat_id = %s AND member_id IN (SELECT member_id FROM votings v2 WHERE chat_id = %s AND member_id IS NOT %s ORDER BY RANDOM() LIMIT 1)' % (chat_id, chat_id, last_organizer))
+            print('------------------------------------')
             organisierer = c.execute('SELECT member_name, member_id FROM votings v WHERE chat_id = ? AND member_id IN (SELECT member_id FROM votings v2 WHERE chat_id = ? AND member_id IS NOT ? ORDER BY RANDOM() LIMIT 1)' , [chat_id, chat_id, last_organizer]).fetchone()
+            print('Organisator: ' + str(organisierer))
+            if organisierer is None:
+                organisierer = ['None', 1]
+            print('Nachricht: ' + str(message))
             message += '\n%s darf diese Woche den Stammtisch organisieren' % organisierer[0]
             org_member_id = organisierer[1]
             context.bot.send_message(chat_id=chat_id, text=message)
             execute_query('UPDATE chatrooms SET last_voting_notification = ?, last_organizer = ? WHERE chat_id = ?', [now, org_member_id, chat_id])
             # If User was never organizer, they get 4 credits
-            credits = execute_select('SELECT credits FROM member_credits WHERE chat_id = ? AND member_id = ?', [chat_id, member_id])
+            credits = execute_select('SELECT credits FROM member_credits WHERE chat_id = ? AND member_id = ?', [chat_id, org_member_id])
             if len(credits) == 0:
-                execute_query('INSERT INTO member_credits(chat_id, member_id, credits) VALUES (?, ?, ?)', [chat_id, member_id, 4])
+                execute_query('INSERT INTO member_credits(chat_id, member_id, credits) VALUES (?, ?, ?)', [chat_id, org_member_id, 4])
             # Add a credit to the member
-            execute_query('UPDATE member_credits SET credits = credits+1 WHERE chat_id = ? AND member_id = ?', [chat_id, member_id])
+            execute_query('UPDATE member_credits SET credits = credits+1 WHERE chat_id = ? AND member_id = ?', [chat_id, org_member_id])
             chatrooms[chat_id][2] = now
             chatrooms[chat_id][3] = org_member_id
 
@@ -591,7 +600,7 @@ dispatcher.add_handler(vote_handler)
 updater.start_polling()
 
 # Allen chats sagen, dass der Bot Online ist
-#for chatid in chatrooms:
-#   updater.bot.send_message(chat_id=int(chatid), text='Ich bin Online!')
+# for chatid in chatrooms:
+#    updater.bot.send_message(chat_id=int(chatid), text='Ich bin Online!')
 
 updater.idle()
